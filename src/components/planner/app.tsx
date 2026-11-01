@@ -337,7 +337,7 @@ export function Kivora() {
   const clearOwnedEvents = () => {
     if (
       !window.confirm(
-        "Delete every event and local workspace record from this browser? This cannot be undone.",
+        "Delete all events from this browser? You can undo until the next change or reload.",
       )
     )
       return;

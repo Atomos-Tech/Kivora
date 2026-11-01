@@ -110,11 +110,11 @@ export function SettingsView({
         </section>
         <section className="panel settings-panel">
           <div className="settings-copy">
-            <h2>Clear local workspace</h2>
+            <h2>Clear event data</h2>
             <p>Remove all event data saved on this browser.</p>
           </div>
           <button className="button button-danger" onClick={onReset}>
-            Clear local workspace
+            Clear event data
           </button>
         </section>
         <div className="local-warning">

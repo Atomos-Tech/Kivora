@@ -133,6 +133,19 @@ describe("Planner workflows", () => {
     await waitFor(() => expect(document.documentElement.dataset["theme"]).toBe("dark"));
     expect(screen.getByRole("button", { name: "Ocean" })).toHaveAttribute("aria-pressed", "true");
   });
+  it("clears only event data and lets the user undo that deletion", async () => {
+    seed();
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    render(<Kivora />);
+    fireEvent.click(await screen.findByRole("button", { name: "Settings" }));
+    fireEvent.click(screen.getByRole("button", { name: "Clear event data" }));
+    expect(window.confirm).toHaveBeenCalledWith(
+      "Delete all events from this browser? You can undo until the next change or reload.",
+    );
+    expect(saved()).toMatchObject({ name: "Ari", events: [], preferences: defaultPreferences });
+    fireEvent.click(screen.getByRole("button", { name: "Undo" }));
+    expect(saved().events).toHaveLength(1);
+  });
   it("preserves unreadable stored data rather than overwriting it", async () => {
     localStorage.setItem(key, '{"events":"broken"}');
     render(<Kivora />);
