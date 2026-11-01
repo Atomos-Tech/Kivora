@@ -4,6 +4,19 @@ import { type FormEvent, type ReactNode, useState } from "react";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { type EventPlan, currencies, templates } from "@/lib/planner";
 
+const fieldsByType = {
+  event: ["name", "type", "date", "location", "guests", "budget", "currency"],
+  editEvent: ["name", "type", "date", "location", "guests", "budget", "currency"],
+  task: ["title", "due", "category"],
+  agenda: ["title", "due", "category"],
+  budget: ["title", "category", "planned", "actual"],
+  guest: ["name", "email", "group"],
+  vendor: ["name", "service", "contact", "quote"],
+  note: ["title", "kind", "text"],
+  member: ["name", "role", "email"],
+} as const;
+const numericFields = new Set(["guests", "budget", "planned", "actual", "quote"]);
+
 export function AppLoading() {
   return (
     <main className="entry-screen" aria-label="Opening Kivora">
@@ -114,11 +127,12 @@ export function CreateForm({
     e.preventDefault();
     // Read submitted controls too: browser autofill and native date pickers can
     // update the DOM before React receives a change event.
-    const submitted = { ...form, ...Object.fromEntries(new FormData(e.currentTarget).entries()) };
-    const numberKeys = ["guests", "budget", "planned", "actual", "quote"];
-    const normalized: Record<string, string | number> = Object.fromEntries(
-      Object.entries(submitted).map(([key, value]) => [key, String(value).trim()]),
-    );
+    const submitted = Object.fromEntries(new FormData(e.currentTarget).entries());
+    const normalized: Record<string, string | number> = {};
+    for (const key of fieldsByType[type]) {
+      const raw = String(submitted[key] ?? form[key] ?? "").trim();
+      normalized[key] = numericFields.has(key) ? Number(raw) || 0 : raw;
+    }
     if (
       (type === "event" ||
         type === "editEvent" ||
@@ -133,16 +147,6 @@ export function CreateForm({
       !String(normalized["title"] || "").trim()
     )
       return;
-    numberKeys.forEach((key) => {
-      if (key in normalized) normalized[key] = Number(normalized[key]) || 0;
-    });
-    if (type === "event" || type === "editEvent") {
-      normalized["guests"] = Number(submitted["guests"]) || 0;
-      normalized["budget"] = Number(submitted["budget"]) || 0;
-    }
-    if (type === "budget") normalized["actual"] = Number(submitted["actual"]) || 0;
-    delete normalized["id"];
-    delete normalized["done"];
     onSubmit(normalized);
   };
   const input = (

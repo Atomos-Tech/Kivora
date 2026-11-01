@@ -311,7 +311,12 @@ export function Kivora() {
     copy.budgetItems = copy.budgetItems.map((b) => ({ ...b, id: newId(), actual: 0 }));
     copy.guestsList = [];
     copy.members = [];
-    copy.vendors = copy.vendors.map((v) => ({ ...v, id: newId(), status: "Researching" }));
+    copy.vendors = copy.vendors.map((v) => ({
+      ...v,
+      id: newId(),
+      contact: "",
+      status: "Researching",
+    }));
     copy.agenda = copy.agenda.map((t) => ({ ...t, id: newId(), done: false }));
     copy.notes = copy.notes.map((n) => ({ ...n, id: newId() }));
     addEvent(copy);

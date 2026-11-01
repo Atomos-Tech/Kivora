@@ -52,6 +52,13 @@ describe("Planner workflows", () => {
     fireEvent.click(screen.getByRole("button", { name: "Add guest" }));
     fireEvent.change(screen.getByLabelText("Guest name"), { target: { value: "Alex" } });
     fireEvent.submit(screen.getByRole("dialog").querySelector("form")!);
+    expect(saved().events[0].guestsList[0]).toEqual({
+      id: expect.any(String),
+      name: "Alex",
+      email: "",
+      group: "",
+      rsvp: "Pending",
+    });
     expect(() => parseWorkspace(saved())).not.toThrow();
   });
   it("completes dashboard tasks across different events", async () => {
@@ -160,6 +167,35 @@ describe("Planner workflows", () => {
     expect(saved().events[0].tasks).toHaveLength(3);
     fireEvent.click(screen.getByRole("button", { name: "Undo" }));
     expect(saved().events[0].tasks).toHaveLength(4);
+  });
+  it("duplicates the plan without copying people or vendor contact details", async () => {
+    const event = seed();
+    event.guestsList = [
+      { id: "guest-1", name: "Alex", email: "alex@example.com", group: "", rsvp: "Pending" },
+    ];
+    event.vendors = [
+      {
+        id: "vendor-1",
+        name: "Flowers",
+        service: "Florist",
+        contact: "private@example.com",
+        quote: 50,
+        status: "Booked",
+      },
+    ];
+    localStorage.setItem(
+      key,
+      JSON.stringify({ name: "Ari", events: [event], preferences: defaultPreferences }),
+    );
+    window.history.replaceState(null, "", `/?view=My+Events&event=${event.id}`);
+    render(<Kivora />);
+    fireEvent.click(await screen.findByRole("button", { name: "Duplicate" }));
+    const copy = saved().events[1];
+    expect(copy.guestsList).toEqual([]);
+    expect(copy.vendors).toEqual([
+      { ...event.vendors[0], id: expect.any(String), contact: "", status: "Researching" },
+    ]);
+    expect(copy.vendors[0].id).not.toBe(event.vendors[0]!.id);
   });
 });
 
