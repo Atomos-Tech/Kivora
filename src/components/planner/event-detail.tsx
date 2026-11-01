@@ -26,7 +26,6 @@ export function EventView({
   onRemove,
   onEdit,
   onEventPatch,
-  onToast,
   onCopilot,
   query,
 }: {
@@ -44,7 +43,6 @@ export function EventView({
   ) => void;
   onEdit: (key: Collection, id: string) => void;
   onEventPatch: (fn: (event: EventPlan) => EventPlan) => void;
-  onToast: (s: string) => void;
   onCopilot: () => void;
   query: string;
 }) {

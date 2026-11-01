@@ -183,6 +183,8 @@ describe("Planner workflows", () => {
   });
   it("duplicates the plan without copying people or vendor contact details", async () => {
     const event = seed();
+    event.tasks[0] = { ...event.tasks[0]!, due: "2026-12-01", done: true };
+    event.budgetItems[0] = { ...event.budgetItems[0]!, actual: 25 };
     event.guestsList = [
       { id: "guest-1", name: "Alex", email: "alex@example.com", group: "", rsvp: "Pending" },
     ];
@@ -204,6 +206,9 @@ describe("Planner workflows", () => {
     render(<Kivora />);
     fireEvent.click(await screen.findByRole("button", { name: "Duplicate" }));
     const copy = saved().events[1];
+    expect(copy.date).toBe("");
+    expect(copy.tasks[0]).toMatchObject({ due: "", done: false });
+    expect(copy.budgetItems[0].actual).toBe(0);
     expect(copy.guestsList).toEqual([]);
     expect(copy.vendors).toEqual([
       { ...event.vendors[0], id: expect.any(String), contact: "", status: "Researching" },

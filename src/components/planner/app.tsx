@@ -24,6 +24,7 @@ import {
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { EventLibrary, MonthCalendar, TemplateGallery } from "@/components/planner/workspace";
+import { duplicateEvent as makeEventCopy } from "@/lib/duplicate-event";
 import {
   type AppData,
   type BudgetItem,
@@ -303,23 +304,7 @@ export function Kivora() {
     }));
   const duplicateEvent = () => {
     if (!active) return;
-    const copy = structuredClone(active);
-    copy.id = newId();
-    copy.name = `${copy.name} (copy)`;
-    copy.date = "";
-    copy.tasks = copy.tasks.map((t) => ({ ...t, id: newId(), done: false, due: "" }));
-    copy.budgetItems = copy.budgetItems.map((b) => ({ ...b, id: newId(), actual: 0 }));
-    copy.guestsList = [];
-    copy.members = [];
-    copy.vendors = copy.vendors.map((v) => ({
-      ...v,
-      id: newId(),
-      contact: "",
-      status: "Researching",
-    }));
-    copy.agenda = copy.agenda.map((t) => ({ ...t, id: newId(), done: false }));
-    copy.notes = copy.notes.map((n) => ({ ...n, id: newId() }));
-    addEvent(copy);
+    addEvent(makeEventCopy(active));
     setToast("Event copied with fresh tasks. Guest and collaborator lists start empty.");
   };
   const deleteEvent = () => {
@@ -629,7 +614,6 @@ export function Kivora() {
                     onToggle={toggleTask}
                     onRemove={removeItem}
                     onEventPatch={patchEvent}
-                    onToast={setToast}
                     onCopilot={() => navigate("Planning Copilot")}
                     query=""
                   />
