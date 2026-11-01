@@ -32,6 +32,10 @@ The supported runtime is Node.js 22. The production build uses the Vercel Nitro 
 
 The route delegates to focused planner components. `src/lib/planner.ts` owns schemas, migration, templates, calendar/CSV exports, and region-aware formatting. Storage errors preserve unreadable originals, and a pre-write comparison detects changes from another tab. Restore accepts at most 10 MB and validates every record, date, amount, and ID before modifying current data.
 
+The main planner now delegates browser persistence to `use-planner-storage.ts`, workspace navigation to `sidebar.tsx`, search to `search-dialog.tsx`, and record creation/editing to `event-records.ts`. `form-submission.ts` validates each form's specific payload before it reaches event state. The generated Lovable and Supabase integration files and empty Drizzle schema were traced but retained: the application does not use them for planner records, while the connected editor and its configuration may still depend on them.
+
+The style review found no identical CSS rule blocks or duplicate declarations within the same cascade context. Similar selectors occur under different responsive or appearance conditions, so they were retained. The production build still warns about a large client chunk; changing its loading strategy needs browser performance measurements and would be a separate change.
+
 Regression tests cover old-data migration, malformed imports, calendar/CSV correctness, browser-local initialization, template creation, optional-field persistence, cross-event task completion, editing, search, deep links, preferences, Copilot targeting, storage conflicts, and undo. Accessibility checks use axe in jsdom; color contrast, actual screen-reader behavior, and touch ergonomics require browser/manual review.
 
 ## Evaluation evidence and limits

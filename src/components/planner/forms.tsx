@@ -2,6 +2,7 @@ import { Check, Sparkles, X } from "lucide-react";
 import { type FormEvent, type ReactNode, useState } from "react";
 
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
+import { type FormKind, type FormSubmission, submissionSchema } from "@/lib/form-submission";
 import { type EventPlan, currencies, templates } from "@/lib/planner";
 
 const fieldsByType = {
@@ -76,15 +77,15 @@ export function CreateForm({
   onCancel,
   onSubmit,
 }: {
-  type:
-    "event" | "editEvent" | "task" | "budget" | "guest" | "vendor" | "note" | "member" | "agenda";
+  type: FormKind;
   currency: string;
   initialEvent?: EventPlan | undefined;
   templateId?: string;
   initialValues?: Record<string, string> | undefined;
   onCancel: () => void;
-  onSubmit: (value: Record<string, string | number>) => void;
+  onSubmit: (submission: FormSubmission) => void;
 }) {
+  const [formError, setFormError] = useState("");
   const selectedTemplate = templates.find((t) => t.id === templateId);
   const [form, setForm] = useState<Record<string, string>>({
     type: selectedTemplate?.type || "Birthday",
@@ -93,8 +94,6 @@ export function CreateForm({
       : {}),
     currency,
     category: "Planning",
-    rsvp: "Pending",
-    status: "Researching",
     role: "Editor",
     kind: "Mood",
     due: "",
@@ -131,23 +130,15 @@ export function CreateForm({
     const normalized: Record<string, string | number> = {};
     for (const key of fieldsByType[type]) {
       const raw = String(submitted[key] ?? form[key] ?? "").trim();
-      normalized[key] = numericFields.has(key) ? Number(raw) || 0 : raw;
+      normalized[key] = numericFields.has(key) ? Number(raw) : raw;
     }
-    if (
-      (type === "event" ||
-        type === "editEvent" ||
-        type === "guest" ||
-        type === "vendor" ||
-        type === "member") &&
-      !String(normalized["name"] || "").trim()
-    )
+    const parsed = submissionSchema.safeParse({ kind: type, values: normalized });
+    if (!parsed.success) {
+      setFormError("Check the required fields, date, and amounts before saving.");
       return;
-    if (
-      ["task", "agenda", "note", "budget"].includes(type) &&
-      !String(normalized["title"] || "").trim()
-    )
-      return;
-    onSubmit(normalized);
+    }
+    setFormError("");
+    onSubmit(parsed.data);
   };
   const input = (
     key: string,
@@ -321,6 +312,11 @@ export function CreateForm({
   return (
     <form className="create-form" onSubmit={handle}>
       {fields}
+      {formError && (
+        <p role="alert" className="form-error">
+          {formError}
+        </p>
+      )}
       <div className="modal-actions">
         <button type="button" className="button button-light" onClick={onCancel}>
           Cancel

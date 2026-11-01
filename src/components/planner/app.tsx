@@ -1,11 +1,11 @@
 import { useIsMobile } from "@/hooks/use-mobile";
+import { usePlannerStorage, STORE_KEY } from "@/hooks/use-planner-storage";
 import { FormattingProvider } from "@/components/planner/formatting";
 import {
   ArrowRight,
   Bell,
   CalendarDays,
   CheckCircle2,
-  ChevronDown,
   Copy,
   Download,
   Heart,
@@ -25,19 +25,12 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 import { EventLibrary, MonthCalendar, TemplateGallery } from "@/components/planner/workspace";
 import { duplicateEvent as makeEventCopy } from "@/lib/duplicate-event";
+import { saveEventRecord } from "@/lib/event-records";
 import {
   type AppData,
-  type BudgetItem,
   type EventPlan,
-  type Guest,
-  type Member,
-  type Note,
   type Preferences,
-  type Task,
-  type Vendor,
   downloadFile,
-  emptyEvent,
-  emptyWorkspace,
   eventDateValue,
   eventFromTemplate,
   guestExport,
@@ -58,6 +51,8 @@ import { EventView } from "./event-detail";
 import { AppLoading, CreateForm, Modal } from "./forms";
 import { CopilotView, InspirationHub, Notifications } from "./planning-tools";
 import { SettingsView } from "./settings";
+import { SearchDialog } from "./search-dialog";
+import { PlannerSidebar } from "./sidebar";
 const nav: { label: View; icon: typeof LayoutDashboard }[] = [
   { label: "Dashboard", icon: LayoutDashboard },
   { label: "My Events", icon: CalendarDays },
@@ -68,10 +63,17 @@ const nav: { label: View; icon: typeof LayoutDashboard }[] = [
   { label: "Notifications", icon: Bell },
   { label: "Settings", icon: Settings },
 ];
-const STORE_KEY = "kivora.local.v1";
 export function Kivora() {
-  const [data, setData] = useState<AppData>(emptyWorkspace);
-  const [loaded, setLoaded] = useState(false);
+  const {
+    data,
+    setData,
+    loaded,
+    storageError,
+    setStorageError,
+    storageBlocked,
+    setStorageBlocked,
+    lastSaved,
+  } = usePlannerStorage();
   const [view, setView] = useState<View>("Dashboard");
   const [activeId, setActiveId] = useState("");
   const [section, setSection] = useState<Section>("Overview");
@@ -121,14 +123,10 @@ export function Kivora() {
       previous?.focus();
     };
   }, [mobileNav, isMobile]);
-  const [query, setQuery] = useState("");
   const [searchOpen, setSearchOpen] = useState(false);
   const [templateId, setTemplateId] = useState("");
-  const [storageError, setStorageError] = useState("");
-  const [storageBlocked, setStorageBlocked] = useState(false);
   const [undo, setUndo] = useState<AppData | null>(null);
   const [restore, setRestore] = useState<AppData | null>(null);
-  const lastSaved = useRef<string | null>(null);
   const [toast, setToast] = useState("");
   const [generated, setGenerated] = useState(false);
   const active = data.events.find((e) => e.id === activeId);
@@ -142,45 +140,13 @@ export function Kivora() {
     setData(fn);
   };
   useEffect(() => {
-    try {
-      const raw = localStorage.getItem(STORE_KEY);
-      lastSaved.current = raw;
-      if (raw) setData(parseWorkspace(JSON.parse(raw)));
-    } catch {
-      setStorageBlocked(true);
-      setStorageError(
-        "Your saved workspace could not be read. It has not been overwritten. Download the original data or restore a valid backup in Settings.",
-      );
-    }
     const params = new URLSearchParams(window.location.search);
     const nextView = params.get("view");
     if (nav.some((item) => item.label === nextView)) setView(nextView as View);
     setActiveId(params.get("event") || "");
     const nextSection = params.get("section");
     if (sections.includes(nextSection as Section)) setSection(nextSection as Section);
-    setLoaded(true);
   }, []);
-  useEffect(() => {
-    if (!loaded || storageBlocked) return;
-    try {
-      const existing = localStorage.getItem(STORE_KEY);
-      if (existing !== lastSaved.current) {
-        setStorageBlocked(true);
-        setStorageError(
-          "This workspace changed in another tab. Download your current work, then reload to use the latest saved version.",
-        );
-        return;
-      }
-      const serialized = JSON.stringify(data);
-      localStorage.setItem(STORE_KEY, serialized);
-      lastSaved.current = serialized;
-      setStorageError("");
-    } catch {
-      setStorageError(
-        "Changes could not be saved on this device. Download a backup before leaving this page.",
-      );
-    }
-  }, [data, loaded, storageBlocked]);
   useEffect(() => {
     const p = data.preferences;
     const root = document.documentElement;
@@ -339,98 +305,24 @@ export function Kivora() {
         <a className="skip-link" href="#main-content">
           Skip to content
         </a>
-        <aside
-          ref={navigationRef}
-          inert={isMobile && !mobileNav}
-          aria-label="Workspace navigation"
-          className={`sidebar ${mobileNav ? "sidebar-open" : ""}`}
-        >
-          <button
-            className="mobile-nav-close icon-button"
-            aria-label="Close menu"
-            onClick={() => setMobileNav(false)}
-          >
-            <X size={20} />
-          </button>
-          <div className="brand">
-            <span className="brand-mark">k</span>
-            <span>kivora</span>
-          </div>
-          <div className="workspace-label">YOUR WORKSPACE</div>
-          <button
-            className="workspace-user"
-            onClick={() => navigate("Settings")}
-            aria-label="Customize workspace"
-          >
-            <span className="avatar">{(data.name || "P").slice(0, 1).toUpperCase()}</span>
-            <span className="user-copy">
-              <b>{data.name || "Planner"}</b>
-              <small>{data.preferences.workspace}</small>
-            </span>
-            <ChevronDown size={15} />
-          </button>
-          <div className="nav-label">PLANNING</div>
-          <nav>
-            {nav.map(({ label, icon: Icon }) => (
-              <button
-                className={`nav-item ${view === label ? "active" : ""}`}
-                key={label}
-                aria-current={view === label ? "page" : undefined}
-                onClick={() => navigate(label)}
-              >
-                <Icon size={17} strokeWidth={1.8} />
-                <span>{label}</span>
-                {label === "Notifications" &&
-                  data.events.some((e) =>
-                    e.tasks.some((t) => !t.done && t.due && t.due < localDate()),
-                  ) && <i className="nav-dot" />}
-              </button>
-            ))}
-          </nav>
-          <div className="sidebar-events">
-            <div className="nav-label">
-              YOUR EVENTS{" "}
-              <button
-                aria-label="Create event"
-                onClick={() => {
-                  setEditing(null);
-                  setModal("event");
-                }}
-              >
-                <Plus size={15} />
-              </button>
-            </div>
-            {upcoming.slice(0, 4).map((e) => (
-              <button
-                key={e.id}
-                className={`event-nav ${active?.id === e.id && view === "My Events" ? "selected" : ""}`}
-                onClick={() => openEvent(e.id)}
-              >
-                <span className="event-dot" />
-                {e.name}
-              </button>
-            ))}
-            {!data.events.length && <small className="muted">Your events will appear here</small>}
-          </div>
-          <div className="sidebar-bottom">
-            <div className="local-note">
-              <span className="local-dot" />
-              {storageError ? "Changes need attention" : "Saved on this device"}
-            </div>
-            <div className="profile-row">
-              <span className="avatar avatar-small">
-                {(data.name || "P").slice(0, 1).toUpperCase()}
-              </span>
-              <span>
-                <b>{data.name || "Planner"}</b>
-                <small>{data.preferences.workspace}</small>
-              </span>
-              <button aria-label="Open settings" onClick={() => navigate("Settings")}>
-                <Settings size={16} />
-              </button>
-            </div>
-          </div>
-        </aside>
+        <PlannerSidebar
+          navigationRef={navigationRef}
+          isMobile={isMobile}
+          mobileNav={mobileNav}
+          data={data}
+          events={upcoming}
+          activeId={activeId}
+          view={view}
+          nav={nav}
+          storageError={storageError}
+          onClose={() => setMobileNav(false)}
+          onNavigate={navigate}
+          onCreate={() => {
+            setEditing(null);
+            setModal("event");
+          }}
+          onOpen={openEvent}
+        />
         {mobileNav && (
           <button
             className="scrim"
@@ -677,119 +569,13 @@ export function Kivora() {
           </div>
         </main>
         {searchOpen && (
-          <Modal
-            title="Find your next step"
-            onClose={() => {
-              setSearchOpen(false);
-              setQuery("");
-            }}
-          >
-            <label className="command-input">
-              <Search size={20} />
-              <input
-                autoFocus
-                aria-label="Search workspace records"
-                placeholder="Events, tasks, guests, vendors, ideas…"
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-              />
-            </label>
-            <div className="command-results">
-              {!query.trim() && (
-                <>
-                  <span className="eyebrow">QUICK ACTIONS</span>
-                  {nav.map((item) => (
-                    <button
-                      key={item.label}
-                      onClick={() => {
-                        navigate(item.label);
-                        setSearchOpen(false);
-                      }}
-                    >
-                      <item.icon size={17} />
-                      <span>{item.label}</span>
-                      <ArrowRight size={15} />
-                    </button>
-                  ))}
-                </>
-              )}
-              {query.trim() &&
-                (() => {
-                  const results = data.events
-                    .flatMap((event) => [
-                      { id: event.id, title: event.name, section: "Overview" as Section, event },
-                      ...event.tasks.map((t) => ({
-                        id: t.id,
-                        title: t.title,
-                        section: "Timeline & tasks" as Section,
-                        event,
-                      })),
-                      ...event.guestsList.map((g) => ({
-                        id: g.id,
-                        title: g.name,
-                        section: "Guests" as Section,
-                        event,
-                      })),
-                      ...event.vendors.map((v) => ({
-                        id: v.id,
-                        title: v.name,
-                        section: "Vendors" as Section,
-                        event,
-                      })),
-                      ...event.notes.map((n) => ({
-                        id: n.id,
-                        title: n.title,
-                        section: "Inspiration" as Section,
-                        event,
-                      })),
-                      ...event.budgetItems.map((b) => ({
-                        id: b.id,
-                        title: b.title,
-                        section: "Budget" as Section,
-                        event,
-                      })),
-                    ])
-                    .filter((r) =>
-                      `${r.title} ${r.event.name} ${r.event.location}`
-                        .toLowerCase()
-                        .includes(query.toLowerCase().trim()),
-                    );
-                  return results.length ? (
-                    <>
-                      <span className="eyebrow">{results.length} RESULTS</span>
-                      {results.slice(0, 30).map((result) => (
-                        <button
-                          key={result.id}
-                          onClick={() => {
-                            openEvent(result.event.id, result.section);
-                            setSearchOpen(false);
-                            setQuery("");
-                          }}
-                        >
-                          <Search size={16} />
-                          <span>
-                            <b>{result.title}</b>
-                            <small>
-                              {result.event.name} · {result.section}
-                            </small>
-                          </span>
-                          <ArrowRight size={15} />
-                        </button>
-                      ))}
-                    </>
-                  ) : (
-                    <div className="command-empty">
-                      <Search size={28} />
-                      <h3>No matches yet</h3>
-                      <p>Try an event name, a person, or a planning detail.</p>
-                    </div>
-                  );
-                })()}
-            </div>
-            <p className="fine-print">
-              Use Tab to move through results, Enter to open, and Escape to close.
-            </p>
-          </Modal>
+          <SearchDialog
+            events={data.events}
+            nav={nav}
+            onClose={() => setSearchOpen(false)}
+            onNavigate={navigate}
+            onOpen={openEvent}
+          />
         )}
         {restore && (
           <Modal title="Restore this workspace?" onClose={() => setRestore(null)}>
@@ -872,96 +658,35 @@ export function Kivora() {
                 setTemplateId("");
                 setEditing(null);
               }}
-              onSubmit={(value) => {
-                if (modal === "event") {
+              onSubmit={(submission) => {
+                if (submission.kind === "event") {
                   addEvent(
                     eventFromTemplate(templateId, {
-                      ...(value as Parameters<typeof emptyEvent>[0]),
-                      date: eventDateValue(value["date"]),
+                      ...submission.values,
+                      date: eventDateValue(submission.values.date),
                     }),
                   );
                   setTemplateId("");
                   return;
                 }
-                if (modal === "editEvent") {
+                if (submission.kind === "editEvent") {
                   if (!active) return;
                   patchEvent((e) => ({
                     ...e,
-                    name: String(value["name"]),
-                    type: String(value["type"]),
-                    date: eventDateValue(value["date"]),
-                    location: String(value["location"]),
-                    guests: Number(value["guests"]) || 0,
-                    budget: Number(value["budget"]) || 0,
-                    currency: String(value["currency"]),
+                    ...submission.values,
+                    date: eventDateValue(submission.values.date),
                   }));
                   setModal(null);
                   setToast("Event details updated.");
                   return;
                 }
                 if (!active) return;
-                if (editing) {
-                  patchEvent((e) => ({
-                    ...e,
-                    [editing.key]: e[editing.key].map((item) =>
-                      item.id === editing.id ? { ...item, ...value, id: item.id } : item,
-                    ),
-                  }));
-                  setEditing(null);
-                  setModal(null);
-                  setToast("Details updated.");
-                  return;
-                }
-                const id = newId();
-                if (modal === "task")
-                  patchEvent((e) => ({
-                    ...e,
-                    tasks: [
-                      ...e.tasks,
-                      { id, ...(value as Omit<Task, "id" | "done">), done: false },
-                    ],
-                  }));
-                if (modal === "budget")
-                  patchEvent((e) => ({
-                    ...e,
-                    budgetItems: [...e.budgetItems, { id, ...(value as Omit<BudgetItem, "id">) }],
-                  }));
-                if (modal === "guest")
-                  patchEvent((e) => ({
-                    ...e,
-                    guestsList: [
-                      ...e.guestsList,
-                      { id, ...(value as Omit<Guest, "id" | "rsvp">), rsvp: "Pending" },
-                    ],
-                  }));
-                if (modal === "vendor")
-                  patchEvent((e) => ({
-                    ...e,
-                    vendors: [
-                      ...e.vendors,
-                      { id, ...(value as Omit<Vendor, "id" | "status">), status: "Researching" },
-                    ],
-                  }));
-                if (modal === "note")
-                  patchEvent((e) => ({
-                    ...e,
-                    notes: [...e.notes, { id, ...(value as Omit<Note, "id">) }],
-                  }));
-                if (modal === "agenda")
-                  patchEvent((e) => ({
-                    ...e,
-                    agenda: [
-                      ...e.agenda,
-                      { id, ...(value as Omit<Task, "id" | "done">), done: false },
-                    ],
-                  }));
-                if (modal === "member") {
-                  patchEvent((e) => ({
-                    ...e,
-                    members: [...e.members, { id, ...(value as Omit<Member, "id">) }],
-                  }));
+                patchEvent((e) => saveEventRecord(e, submission, editing?.id));
+                if (editing) setToast("Details updated.");
+                else if (submission.kind === "member") {
                   setToast("Added to this local planning workspace. No invitation was sent.");
                 }
+                setEditing(null);
                 setModal(null);
               }}
             />
